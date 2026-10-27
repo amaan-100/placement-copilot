@@ -1,0 +1,5 @@
+[
+ {"id":"mock-001","title":"Cybersecurity Intern","company":"SecureNet Labs","location":"Mumbai / Hybrid","url":"https://example.com/jobs/cybersecurity-intern","skills":["networking","linux","python","security"],"deadline":"2026-11-15"},
+ {"id":"mock-002","title":"SOC Analyst Intern","company":"BlueShield Security","location":"Remote","url":"https://example.com/jobs/soc-intern","skills":["siem","linux","networking","incident response"],"deadline":"2026-11-22"},
+ {"id":"mock-003","title":"Python Developer Intern","company":"BuildStack","location":"Mumbai","url":"https://example.com/jobs/python-intern","skills":["python","flask","sql","git"],"deadline":"2026-12-01"}
+]
