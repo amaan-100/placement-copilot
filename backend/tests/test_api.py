@@ -11,6 +11,24 @@ def _upload(client, headers, sample_pdf):
     return response.json()
 
 
+def _create_draft(client, headers, sample_pdf):
+    _upload(client, headers, sample_pdf)
+    search = client.post(
+        "/api/jobs/search",
+        headers=headers,
+        json={"query": "cybersecurity internship"},
+    )
+    assert search.status_code == 200, search.text
+    job = search.json()["jobs"][0]
+    draft = client.post(
+        "/api/applications/draft",
+        headers=headers,
+        json={"job_id": job["id"]},
+    )
+    assert draft.status_code == 201, draft.text
+    return draft.json()
+
+
 def test_health_and_session_headers(client, headers):
     response = client.get("/api/health", headers=headers)
     assert response.status_code == 200
@@ -97,6 +115,16 @@ def test_happy_path_upload_search_draft_approve(client, headers, sample_pdf):
     assert traces.status_code == 200
     trace_agents = {trace["agent"] for trace in traces.json()}
     assert {"resume", "job", "document"}.issubset(trace_agents)
+    for trace in traces.json():
+        llm = trace["output"].get("llm")
+        if llm is not None:
+            assert set(llm) == {"used"}
+
+
+def test_llm_status_hides_provider_details(client, headers):
+    response = client.get("/api/llm/status", headers=headers)
+    assert response.status_code == 200
+    assert set(response.json()) == {"enabled", "available"}
 
 
 def test_interview_flow(client, headers):
@@ -171,3 +199,98 @@ def test_validation_and_unknown_job_errors(client, headers, sample_pdf):
     )
     assert missing_job.status_code == 404
     assert missing_job.json()["error"]["code"] == "job_not_found"
+
+
+def test_draft_can_be_edited_before_and_after_approval(client, headers, sample_pdf):
+    drafted = _create_draft(client, headers, sample_pdf)
+    application_id = drafted["application_id"]
+
+    edited = client.patch(
+        f"/api/applications/{application_id}",
+        headers=headers,
+        json={
+            "cover_note": "Edited cover note for the role.",
+            "resume_draft": "Edited resume summary with Python and SQL.",
+        },
+    )
+    assert edited.status_code == 200, edited.text
+    assert edited.json()["cover_note"] == "Edited cover note for the role."
+    assert edited.json()["resume_draft"] == "Edited resume summary with Python and SQL."
+    assert edited.json()["status"] == "PENDING_APPROVAL"
+
+    partial = client.patch(
+        f"/api/applications/{application_id}",
+        headers=headers,
+        json={"cover_note": "A shorter edited cover note."},
+    )
+    assert partial.status_code == 200, partial.text
+    assert partial.json()["cover_note"] == "A shorter edited cover note."
+    assert partial.json()["resume_draft"] == "Edited resume summary with Python and SQL."
+
+    approved = client.post(
+        f"/api/applications/{application_id}/approve",
+        headers=headers,
+    )
+    assert approved.status_code == 200, approved.text
+    assert approved.json()["status"] == "APPROVED"
+
+    no_change = client.patch(
+        f"/api/applications/{application_id}",
+        headers=headers,
+        json={
+            "cover_note": "A shorter edited cover note.",
+            "resume_draft": "Edited resume summary with Python and SQL.",
+        },
+    )
+    assert no_change.status_code == 200, no_change.text
+    assert no_change.json()["status"] == "APPROVED"
+
+    reopened = client.patch(
+        f"/api/applications/{application_id}",
+        headers=headers,
+        json={"cover_note": "Approved text changed after review."},
+    )
+    assert reopened.status_code == 200, reopened.text
+    assert reopened.json()["status"] == "PENDING_APPROVAL"
+    assert reopened.json()["cover_note"] == "Approved text changed after review."
+
+    reapproved = client.post(
+        f"/api/applications/{application_id}/approve",
+        headers=headers,
+    )
+    assert reapproved.status_code == 200, reapproved.text
+    assert reapproved.json()["status"] == "APPROVED"
+
+
+def test_draft_edit_validation_and_access(client, headers, sample_pdf):
+    drafted = _create_draft(client, headers, sample_pdf)
+    application_id = drafted["application_id"]
+
+    empty = client.patch(
+        f"/api/applications/{application_id}",
+        headers=headers,
+        json={"cover_note": "   "},
+    )
+    assert empty.status_code == 422
+
+    missing = client.patch(
+        f"/api/applications/{application_id}",
+        headers=headers,
+        json={},
+    )
+    assert missing.status_code == 422
+
+    unknown = client.patch(
+        "/api/applications/999999",
+        headers=headers,
+        json={"cover_note": "Nope."},
+    )
+    assert unknown.status_code == 404
+
+    other_session = {"X-Session-Id": str(uuid.uuid4())}
+    isolated = client.patch(
+        f"/api/applications/{application_id}",
+        headers=other_session,
+        json={"cover_note": "Should not update."},
+    )
+    assert isolated.status_code == 404

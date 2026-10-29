@@ -1,6 +1,7 @@
 import type { ChangeEvent } from 'react';
 import type { ResumeInfo } from '../api/types';
 import { formatDate } from '../utils';
+import { Icon } from './Icon';
 import { Panel } from './Panel';
 
 type ResumePanelProps = {
@@ -28,8 +29,10 @@ export function ResumePanel({
 
   return (
     <Panel
-      title="Resume"
-      description="Upload a PDF. The Resume Agent extracts skills and keeps the text scoped to your session."
+      id="profile"
+      step="01"
+      title="Resume profile"
+      description="This is the source of truth. Upload a text-based PDF and the Resume Agent extracts a grounded profile for every later step."
       action={
         resume ? (
           <button type="button" className="button-danger" onClick={onDelete} disabled={deleting}>
@@ -38,21 +41,27 @@ export function ResumePanel({
         ) : undefined
       }
     >
-      <label className="file-drop">
+      <label className={`file-drop ${resume ? 'has-file' : ''}`}>
         <input
           type="file"
           accept=".pdf,application/pdf"
           onChange={handleChange}
           disabled={uploading}
         />
-        <strong>
-          {uploading
-            ? 'Analyzing your resume…'
-            : resume
-              ? 'Replace resume PDF'
-              : 'Choose a resume PDF'}
-        </strong>
-        <span>PDF up to 8 MB. Text is parsed locally and never sent to a third party.</span>
+        <span className="drop-icon" aria-hidden="true">
+          <Icon name={resume ? 'file' : 'route'} size={22} />
+        </span>
+        <span className="drop-copy">
+          <strong>
+            {uploading
+              ? 'Reading your resume…'
+              : resume
+                ? 'Replace resume PDF'
+                : 'Choose a resume PDF'}
+          </strong>
+          <span>PDF up to 8 MB. Parsed locally and scoped to this session.</span>
+        </span>
+        <span className="drop-action">{uploading ? 'Analyzing' : 'Browse'}</span>
       </label>
 
       {resume ? (
@@ -67,10 +76,18 @@ export function ResumePanel({
                 <span className="status-line">Uploaded {formatDate(resume.created_at)}</span>
               </div>
             </div>
+            <span className="grounded-tag">
+              <Icon name="shield" size={13} />
+              Grounded
+            </span>
           </div>
           {resume.facts.summary ? (
             <p className="resume-summary-text">{resume.facts.summary}</p>
           ) : null}
+          <div className="resume-skill-head">
+            <strong>Detected skills</strong>
+            <span>{resume.facts.skills.length} signals</span>
+          </div>
           <div className="chips" aria-label="Detected skills">
             {resume.facts.skills.length ? (
               resume.facts.skills.map((skill) => (
@@ -85,8 +102,9 @@ export function ResumePanel({
         </div>
       ) : (
         <div className="empty">
-          <strong>No resume yet</strong>
-          Upload a PDF to unlock job search and application drafting.
+          <strong>What happens next</strong>
+          The PDF is parsed locally, known skills are grounded against the text, and job search
+          unlocks. No resume text leaves this machine.
         </div>
       )}
     </Panel>

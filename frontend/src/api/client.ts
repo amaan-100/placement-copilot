@@ -1,6 +1,8 @@
 import type {
   ApiErrorBody,
+  Application,
   ApplicationList,
+  ApplicationUpdate,
   ApproveResponse,
   Dashboard,
   DraftResponse,
@@ -21,7 +23,8 @@ const API_BASE = (import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:8000/api').r
 );
 const SESSION_KEY = 'placement_copilot_session_id';
 const SESSION_HEADER = 'X-Session-Id';
-const REQUEST_TIMEOUT_MS = 120_000;
+const REQUEST_TIMEOUT_MS = 180_000;
+const WAKING_CODES = new Set([502, 503, 504]);
 
 export class ApiError extends Error {
   readonly status: number;
@@ -43,7 +46,10 @@ export class ApiError extends Error {
     this.code = code;
     this.requestId = requestId;
     this.details = details;
-    this.retryable = status === 0 || [502, 503, 504].includes(status);
+    this.retryable =
+      code === 'network_error' ||
+      code === 'server_waking' ||
+      WAKING_CODES.has(status);
   }
 }
 
@@ -110,18 +116,28 @@ async function doRequest<T>(path: string, init: RequestInit): Promise<T> {
     }
 
     const payload = await readJson(response);
+    const waking = WAKING_CODES.has(response.status);
     if (!response.ok) {
       const body = (payload ?? {}) as ApiErrorBody;
-      const message =
-        body.error?.message ??
-        body.detail ??
-        `Request failed with status ${response.status}.`;
+      const message = waking
+        ? 'The workspace is waking up. Wait a moment and try again.'
+        : body.error?.message ??
+          body.detail ??
+          `Request failed with status ${response.status}.`;
       throw new ApiError(
         message,
         response.status,
-        body.error?.code ?? 'http_error',
+        waking ? 'server_waking' : body.error?.code ?? 'http_error',
         body.request_id,
         body.error?.details,
+      );
+    }
+
+    if (payload === null) {
+      throw new ApiError(
+        'The workspace is still starting. Wait a moment and try again.',
+        503,
+        'server_waking',
       );
     }
 
@@ -131,10 +147,14 @@ async function doRequest<T>(path: string, init: RequestInit): Promise<T> {
       throw error;
     }
     if (error instanceof DOMException && error.name === 'AbortError') {
-      throw new ApiError('The request timed out. Try again.', 0, 'timeout');
+      throw new ApiError(
+        'The request timed out. The workspace may still be waking; wait a moment and try again.',
+        0,
+        'timeout',
+      );
     }
     throw new ApiError(
-      'Cannot reach the API. Confirm the backend is running on port 8000.',
+      'Cannot reach the API. The workspace may be waking up; try again in a moment.',
       0,
       'network_error',
     );
@@ -155,14 +175,17 @@ async function request<T>(path: string, init: RequestInit = {}, retries = 1): Pr
       if (!canRetry) {
         throw error;
       }
-      await delay(250 * (attempt + 1));
+      const slowRecovery =
+        error instanceof ApiError &&
+        (error.code === 'server_waking' || error.status >= 500);
+      await delay((slowRecovery ? 1_000 : 250) * (attempt + 1));
     }
   }
   throw lastError;
 }
 
 export const api = {
-  getHealth: () => request<Health>('/health', {}, 0),
+  getHealth: () => request<Health>('/health', {}, 1),
   getSession: () => request<SessionInfo>('/session', {}, 0),
   getLatestResume: () => request<ResumeInfo>('/resume/latest'),
   uploadResume: (file: File) => {
@@ -185,6 +208,12 @@ export const api = {
       0,
     ),
   getApplications: () => request<ApplicationList>('/applications'),
+  updateApplication: (applicationId: number, draft: ApplicationUpdate) =>
+    request<Application>(
+      `/applications/${applicationId}`,
+      { method: 'PATCH', body: JSON.stringify(draft) },
+      0,
+    ),
   approveApplication: (applicationId: number) =>
     request<ApproveResponse>(
       `/applications/${applicationId}/approve`,

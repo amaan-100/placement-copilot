@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class JobSearchRequest(BaseModel):
@@ -99,6 +99,27 @@ class ApplicationOut(BaseModel):
     updated_at: datetime
 
 
+class ApplicationUpdateRequest(BaseModel):
+    resume_draft: str | None = Field(default=None, max_length=20_000)
+    cover_note: str | None = Field(default=None, max_length=8_000)
+
+    @field_validator("resume_draft", "cover_note")
+    @classmethod
+    def clean_draft(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("Draft text cannot be empty.")
+        return cleaned
+
+    @model_validator(mode="after")
+    def require_draft_field(self) -> "ApplicationUpdateRequest":
+        if self.resume_draft is None and self.cover_note is None:
+            raise ValueError("Provide at least one draft field.")
+        return self
+
+
 class ApplicationListResponse(BaseModel):
     applications: list[ApplicationOut]
 
@@ -138,6 +159,11 @@ class HealthResponse(BaseModel):
     status: str
     agent: str
     approval_gate: bool
+
+
+class LlmStatusResponse(BaseModel):
+    enabled: bool
+    available: bool
 
 
 class AgentTraceOut(BaseModel):

@@ -55,6 +55,11 @@ export type ApplicationList = {
   applications: Application[];
 };
 
+export type ApplicationUpdate = {
+  resume_draft?: string;
+  cover_note?: string;
+};
+
 export type DraftResponse = {
   application_id: number;
   status: ApplicationStatus;
@@ -111,12 +116,7 @@ export type Health = {
 
 export type LlmStatus = {
   enabled: boolean;
-  provider: string;
-  model: string;
-  base_url: string;
-  reachable: boolean;
-  model_available: boolean;
-  models: string[];
+  available: boolean;
 };
 
 export type ApiErrorBody = {

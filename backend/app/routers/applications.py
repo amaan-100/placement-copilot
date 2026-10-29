@@ -10,12 +10,13 @@ from ..models import Application, Job, utcnow
 from ..schemas import (
     ApplicationListResponse,
     ApplicationOut,
+    ApplicationUpdateRequest,
     ApproveResponse,
     DraftRequest,
     DraftResponse,
 )
 from ..services.resumes import latest_resume_or_error
-from ..services.traces import record_audit, record_run
+from ..services.traces import record_audit, record_run, text_digest
 from ..tools import html_to_text
 
 router = APIRouter(prefix="/api/applications", tags=["applications"])
@@ -107,6 +108,71 @@ def list_applications(db: DbSession, session_id: SessionId) -> ApplicationListRe
     return ApplicationListResponse(
         applications=[ApplicationOut.model_validate(row) for row in rows]
     )
+
+
+@router.patch("/{app_id}", response_model=ApplicationOut)
+def update_application(
+    app_id: int,
+    req: ApplicationUpdateRequest,
+    db: DbSession,
+    session_id: SessionId,
+) -> ApplicationOut:
+    application = db.get(Application, app_id)
+    if application is None or application.session_id != session_id:
+        raise AppError(404, "application_not_found", "Application not found.")
+
+    if application.status not in ("PENDING_APPROVAL", "APPROVED"):
+        raise AppError(
+            409,
+            "invalid_status_transition",
+            f"Cannot edit an application in status {application.status}.",
+        )
+
+    provided = req.model_dump(exclude_none=True)
+    changed = {
+        field: value
+        for field, value in provided.items()
+        if getattr(application, field) != value
+    }
+    if not changed:
+        return ApplicationOut.model_validate(application)
+
+    previous_status = application.status
+    before_digests = {
+        field: text_digest(getattr(application, field)) for field in changed
+    }
+    for field, value in changed.items():
+        setattr(application, field, value)
+
+    approval_reset = previous_status == "APPROVED"
+    if approval_reset:
+        application.status = "PENDING_APPROVAL"
+
+    application.updated_at = utcnow()
+    db.commit()
+    db.refresh(application)
+
+    record_audit(
+        db,
+        session_id,
+        action="application_edited",
+        application_id=application.id,
+        details={
+            "fields": sorted(changed),
+            "previous_status": previous_status,
+            "new_status": application.status,
+            "approval_reset": approval_reset,
+            "before_digests": before_digests,
+            "after_digests": {
+                field: text_digest(getattr(application, field)) for field in changed
+            },
+            "lengths": {
+                field: len(getattr(application, field)) for field in changed
+            },
+        },
+    )
+
+    return ApplicationOut.model_validate(application)
 
 
 @router.post("/{app_id}/approve", response_model=ApproveResponse)

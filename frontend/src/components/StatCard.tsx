@@ -1,7 +1,7 @@
 type StatCardProps = {
   label: string;
   value: number;
-  tone?: 'warning' | 'success';
+  tone?: 'warning' | 'success' | 'accent';
 };
 
 export function StatCard({ label, value, tone }: StatCardProps) {

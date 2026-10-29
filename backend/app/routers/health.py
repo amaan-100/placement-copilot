@@ -5,7 +5,7 @@ from fastapi import APIRouter
 from ..db import check_db
 from ..errors import AppError
 from ..providers.llm import status as llm_status
-from ..schemas import HealthResponse
+from ..schemas import HealthResponse, LlmStatusResponse
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["health"])
@@ -20,9 +20,13 @@ def health() -> HealthResponse:
     )
 
 
-@router.get("/api/llm/status")
-async def llm_status_endpoint() -> dict:
-    return await llm_status()
+@router.get("/api/llm/status", response_model=LlmStatusResponse)
+async def llm_status_endpoint() -> LlmStatusResponse:
+    details = await llm_status()
+    return LlmStatusResponse(
+        enabled=bool(details.get("enabled")),
+        available=bool(details.get("model_available")),
+    )
 
 
 @router.get("/healthz")

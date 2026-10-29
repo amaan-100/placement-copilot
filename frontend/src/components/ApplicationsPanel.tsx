@@ -9,10 +9,17 @@ type ApplicationsPanelProps = {
 };
 
 export function ApplicationsPanel({ applications, onReview }: ApplicationsPanelProps) {
+  const pending = applications.filter(
+    (application) => application.status === 'PENDING_APPROVAL',
+  ).length;
+
   return (
     <Panel
+      id="approvals"
+      step="03"
       title="Approval queue"
-      description="Every draft waits here. Nothing is submitted until you explicitly approve it."
+      description="Edit every draft before approval. Nothing is submitted to an employer automatically."
+      action={pending ? <span className="panel-count warning">{pending} waiting</span> : undefined}
     >
       {applications.length ? (
         <div className="application-list">
@@ -31,11 +38,15 @@ export function ApplicationsPanel({ applications, onReview }: ApplicationsPanelP
               </div>
               <div className="application-actions">
                 <StatusBadge status={application.status} />
-                {application.status === 'PENDING_APPROVAL' ? (
+                {application.status === 'PENDING_APPROVAL' ||
+                application.status === 'APPROVED' ? (
                   <button type="button" onClick={() => onReview(application)}>
-                    Review and approve
+                    {application.status === 'APPROVED'
+                      ? 'Review / edit draft'
+                      : 'Review draft'}
                   </button>
-                ) : application.status === 'APPROVED' ? (
+                ) : null}
+                {application.status === 'APPROVED' ? (
                   <span className="status-line">Submission stays manual.</span>
                 ) : null}
               </div>

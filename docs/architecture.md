@@ -6,7 +6,7 @@ React/TypeScript SPA
     -> session middleware (X-Session-Id + HttpOnly cookie)
     -> PlacementOrchestrator
       -> Resume | Job | Document | Interview | Application agents
-        -> Ollama LLM provider (local HTTP API -> deterministic fallback)
+        -> LLM provider (Ollama or OpenAI-compatible -> deterministic fallback)
         -> jobs provider (Jobicy live API -> mock fallback -> DB cache)
         -> PyMuPDF resume parser
     -> SQLAlchemy + Alembic (SQLite now, Postgres later)
@@ -41,17 +41,20 @@ fails or returns nothing, the Job Agent falls back to
 by its internal database ID. Repeated searches are served from the database cache
 until the TTL expires.
 
-## Local LLM
+## LLM providers
 
-`backend/app/providers/llm.py` calls Ollama's `/api/chat` endpoint with a strict
-timeout and an optional JSON response format. Resume summaries, cover notes,
-interview questions, and answer evaluations use the model when it is available.
-Each call records provider, model, latency, and fallback reason in the agent trace.
-If Ollama is offline, slow, or returns invalid output, the agents use their
-deterministic implementations so the approval flow still works. Cover notes pass
-a guard that rejects unsupported experience claims such as invented years,
-previous roles, metrics, or certifications. The default model is
-`qwen2.5-coder:7b`; set `LLM_PROVIDER=disabled` to force fallback mode.
+`backend/app/providers/llm.py` supports Ollama's `/api/chat` endpoint and an
+OpenAI-compatible `/chat/completions` endpoint, with strict timeouts and optional
+JSON response formatting. Resume summaries, cover notes, interview questions, and
+answer evaluations use the configured provider when it is available. Each call
+records provider, model, latency, and fallback reason in the server-side trace;
+public trace responses expose only AI-assisted versus deterministic fallback. If
+the provider is offline, slow, unauthorized, rate-limited, or returns invalid output,
+the agents use their deterministic implementations so the approval flow still
+works. Cover notes pass a guard that rejects unsupported experience claims such as
+invented years, previous roles, metrics, or certifications. Local mode defaults to
+`qwen2.5-coder:7b`; cloud mode uses `LLM_MODEL` and `LLM_API_KEY`. Set
+`LLM_PROVIDER=disabled` to force fallback mode.
 
 ## Approval state
 

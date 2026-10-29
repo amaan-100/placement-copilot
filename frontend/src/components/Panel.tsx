@@ -6,15 +6,24 @@ type PanelProps = {
   action?: ReactNode;
   children: ReactNode;
   className?: string;
+  id?: string;
+  step?: string;
 };
 
-export function Panel({ title, description, action, children, className }: PanelProps) {
+export function Panel({ title, description, action, children, className, id, step }: PanelProps) {
   return (
-    <section className={['panel', className].filter(Boolean).join(' ')}>
+    <section id={id} className={['panel', className].filter(Boolean).join(' ')}>
       <div className="panel-heading">
-        <div>
-          <h2>{title}</h2>
-          {description ? <p>{description}</p> : null}
+        <div className="panel-title-group">
+          {step ? (
+            <span className="panel-gate" aria-hidden="true">
+              {step}
+            </span>
+          ) : null}
+          <div>
+            <h2>{title}</h2>
+            {description ? <p>{description}</p> : null}
+          </div>
         </div>
         {action ? <div className="panel-action">{action}</div> : null}
       </div>

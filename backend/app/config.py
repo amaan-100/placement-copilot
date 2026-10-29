@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
 
     database_url: str = f"sqlite:///{(BASE_DIR / 'placement.db').as_posix()}"
+    db_pool_size: int = 5
+    db_max_overflow: int = 5
+    db_pool_recycle_seconds: int = 300
+    db_connect_timeout_seconds: int = 10
 
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
     session_cookie_name: str = "pc_session"
@@ -43,10 +47,17 @@ class Settings(BaseSettings):
     rate_limit_window_seconds: int = 60
     rate_limit_upload_requests: int = 12
 
-    llm_provider: Literal["auto", "ollama", "disabled"] = "auto"
+    llm_provider: Literal["auto", "ollama", "openai_compatible", "disabled"] = "auto"
+    llm_provider_label: str = ""
+    llm_base_url: str = "https://router.requesty.ai/v1"
+    llm_api_key: str = ""
+    llm_model: str = "google/gemma-4-31b-it"
+    llm_json_mode: bool = False
+    llm_status_cache_seconds: int = 300
+    llm_daily_request_limit: int = 180
     ollama_base_url: str = "http://127.0.0.1:11434"
     ollama_model: str = "qwen2.5-coder:7b"
-    llm_timeout_seconds: float = 90.0
+    llm_timeout_seconds: float = 60.0
     llm_max_tokens: int = 600
     llm_context_tokens: int = 8192
     llm_temperature: float = 0.2
@@ -75,7 +86,11 @@ class Settings(BaseSettings):
 
     @property
     def llm_enabled(self) -> bool:
-        return self.llm_provider != "disabled"
+        if self.llm_provider == "disabled":
+            return False
+        if self.llm_provider == "openai_compatible":
+            return bool(self.llm_api_key)
+        return True
 
 
 @lru_cache

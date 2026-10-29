@@ -7,7 +7,8 @@ repeatable deploy. It does not mean a multi-tenant SaaS.
 
 ## Current gaps
 
-- Local generation uses Ollama only; there is no hosted OpenAI-compatible provider.
+- Generation supports local Ollama and an OpenAI-compatible cloud gateway; there
+  is no automatic provider failover yet.
 - Data is scoped to an anonymous browser session; there are no user accounts.
 - Interview is a single question, not yet a multi-turn state machine.
 - Generated content is not yet fact-cited or user-editable.
@@ -52,9 +53,8 @@ and a hard approval gate.
 - Replace deprecated `@app.on_event`.
 
 **Real agent layer**
-- [x] `providers/llm.py`: Ollama provider, timeouts, JSON mode, deterministic
-  fallback, and a status endpoint.
-- [ ] Add an OpenAI-compatible provider behind the same interface.
+- [x] `providers/llm.py`: Ollama and OpenAI-compatible providers, timeouts, JSON
+  mode, deterministic fallback, and a cached status endpoint.
 - [x] Resume Agent: grounded skills plus a short local-LLM summary.
 - [ ] Extend resume extraction to contact, education, experience, and projects.
 - [x] Job Agent: normalize, dedupe, persist live jobs with stable DB IDs, cache
@@ -62,7 +62,7 @@ and a hard approval gate.
 - [x] Document Agent: local-LLM cover note when available, deterministic fallback.
 - [ ] Fact-to-source citations and user editing for generated content.
 - [ ] Interview Agent: state machine with follow-ups and a transcript.
-- [x] Orchestrator: per-run trace with provider/model metadata.
+- [x] Orchestrator: server-side per-run trace with provider/model metadata; public traces sanitized.
 
 **Fix the live-job gap**
 - Cache jobs in the database. Draft by internal `job_id`, not only mock IDs.
@@ -137,4 +137,4 @@ and a hard approval gate.
 - [x] Add pytest happy-path and approval-transition tests.
 - [x] Split the frontend into components with a typed API client.
 - [x] Add local Ollama generation with a deterministic fallback.
-- [x] Show LLM status and provider/model metadata in the UI trace.
+- [x] Show generic AI/fallback status in the UI; keep provider/model metadata server-side.

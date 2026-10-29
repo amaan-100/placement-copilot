@@ -25,12 +25,14 @@ DOCUMENT_SYSTEM = (
 
 QUESTION_SYSTEM = (
     "You are a technical interviewer. Ask one specific, answerable interview "
-    "question for the target role. Return only the question."
+    "question for the target role. Return only the question. Do not explain "
+    "your process."
 )
 
 EVALUATION_SYSTEM = (
     "You are a strict but constructive interview coach. Evaluate the answer "
-    "for relevance, structure, evidence, and clarity. Return only valid JSON."
+    "for relevance, structure, evidence, and clarity. Return only valid JSON. "
+    "Do not explain your reasoning."
 )
 
 
@@ -183,7 +185,7 @@ class DocumentAgent:
             return resume_draft, fallback_cover, fallback_meta("disabled")
 
         prompt = (
-            "Write a tailored cover note for this job in 120-170 words.\n"
+            "Write a concise cover note in three short paragraphs.\n"
             'Start exactly with "Dear Hiring Team," and end with "Sincerely," '
             "followed by the candidate's name only if it appears in the resume.\n"
             "Use only facts explicitly present in the resume below.\n"
@@ -191,15 +193,17 @@ class DocumentAgent:
             "metrics, certifications, awards, or company mission claims.\n"
             "You may mention the target job title, company, and required skills, "
             "but do not claim the candidate has experience they do not have.\n"
-            "Do not use placeholder brackets or markdown.\n\n"
+            "Do not count words, discuss these constraints, or explain your "
+            "process. Return only the final cover note without markdown or "
+            "placeholders.\n\n"
             f"JOB TITLE: {job.get('title', '')}\n"
             f"COMPANY: {job.get('company', '')}\n"
             f"LOCATION: {job.get('location', '')}\n"
             f"JOB SKILLS: {', '.join(job.get('skills') or [])}\n"
-            f"JOB DESCRIPTION:\n{(job.get('description') or '')[:4000]}\n\n"
+            f"JOB DESCRIPTION:\n{(job.get('description') or '')[:1500]}\n\n"
             f"RESUME FACTS (verbatim):\n{resume[:12000]}"
         )
-        cover, meta = await complete_text(DOCUMENT_SYSTEM, prompt, max_tokens=450)
+        cover, meta = await complete_text(DOCUMENT_SYSTEM, prompt, max_tokens=600)
         if not cover:
             return resume_draft, fallback_cover, meta
 
@@ -224,7 +228,7 @@ class InterviewAgent:
             "Ask one interview question that tests a relevant skill or scenario. "
             "It should be answerable in 60-90 seconds. Return only the question."
         )
-        content, meta = await complete_text(QUESTION_SYSTEM, prompt, max_tokens=120)
+        content, meta = await complete_text(QUESTION_SYSTEM, prompt, max_tokens=1200)
         if not content:
             return fallback, meta
 
@@ -258,7 +262,7 @@ class InterviewAgent:
         payload, meta = await complete_json(
             EVALUATION_SYSTEM,
             prompt,
-            max_tokens=300,
+            max_tokens=800,
         )
         if not payload:
             return fallback_score, fallback_feedback, meta

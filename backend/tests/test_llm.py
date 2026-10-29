@@ -1,7 +1,10 @@
 import asyncio
+from datetime import date
 
 from app.agents import _clean_cover, _clean_feedback, _clean_score, orchestrator
-from app.providers.llm import _parse_json, complete_json, status
+from app.config import settings
+from app.providers import llm
+from app.providers.llm import _parse_json, complete_json, complete_text, status
 
 
 def test_parse_json_handles_code_fences_and_extra_text():
@@ -58,7 +61,101 @@ def test_disabled_llm_returns_no_generation():
 
     info = asyncio.run(status())
     assert info["enabled"] is False
-    assert info["model"] == "qwen2.5-coder:7b"
+    assert info["provider"] == "disabled"
+    assert info["model"] == ""
+
+
+def test_auto_provider_prefers_cloud_when_key_is_present(monkeypatch):
+    monkeypatch.setattr(settings, "llm_provider", "auto")
+    monkeypatch.setattr(settings, "llm_api_key", "")
+    assert llm._active_provider() == "ollama"
+
+    monkeypatch.setattr(settings, "llm_api_key", "test-key")
+    assert llm._active_provider() == "openai_compatible"
+
+
+def test_cloud_daily_cap_reserves_calls(monkeypatch):
+    monkeypatch.setattr(llm, "_cloud_call_count", 0)
+    monkeypatch.setattr(llm, "_cloud_call_day", date.today())
+    monkeypatch.setattr(settings, "llm_daily_request_limit", 1)
+
+    assert llm._reserve_cloud_call() is True
+    assert llm._reserve_cloud_call() is False
+
+
+def test_openai_compatible_provider_uses_cloud_contract(monkeypatch):
+    calls: list[dict] = []
+
+    class FakeResponse:
+        status_code = 200
+
+        def __init__(self, data):
+            self._data = data
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self._data
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def post(self, url, headers=None, json=None):
+            calls.append({"url": url, "headers": headers, "json": json})
+            if json and json.get("response_format"):
+                return FakeResponse({"choices": [{"message": {"content": '{"ok": true}'}}]})
+            return FakeResponse({"choices": [{"message": {"content": "Generated cover"}}]})
+
+        async def get(self, url, headers=None):
+            calls.append({"url": url, "headers": headers})
+            return FakeResponse({"data": [{"id": "test/model"}]})
+
+    monkeypatch.setattr(llm.httpx, "AsyncClient", FakeAsyncClient)
+    monkeypatch.setattr(settings, "llm_provider", "openai_compatible")
+    monkeypatch.setattr(settings, "llm_provider_label", "requesty")
+    monkeypatch.setattr(settings, "llm_api_key", "test-key")
+    monkeypatch.setattr(settings, "llm_base_url", "https://example.test/v1")
+    monkeypatch.setattr(settings, "llm_model", "test/model")
+    monkeypatch.setattr(settings, "llm_json_mode", True)
+
+    content, meta = asyncio.run(complete_text("system", "prompt"))
+    assert content == "Generated cover"
+    assert meta["provider"] == "requesty"
+    assert meta["model"] == "test/model"
+    assert meta["used"] is True
+    assert calls[0]["url"] == "https://example.test/v1/chat/completions"
+    assert calls[0]["headers"]["Authorization"] == "Bearer test-key"
+
+    payload, json_meta = asyncio.run(complete_json("system", "prompt"))
+    assert payload == {"ok": True}
+    assert json_meta["used"] is True
+    assert calls[1]["json"]["response_format"] == {"type": "json_object"}
+
+    info = asyncio.run(status())
+    assert info["provider"] == "requesty"
+    assert info["reachable"] is True
+    assert info["model_available"] is True
+    assert info["models"] == ["test/model"]
+
+
+def test_openai_compatible_provider_requires_key(monkeypatch):
+    monkeypatch.setattr(settings, "llm_provider", "openai_compatible")
+    monkeypatch.setattr(settings, "llm_provider_label", "requesty")
+    monkeypatch.setattr(settings, "llm_api_key", "")
+
+    content, meta = asyncio.run(complete_text("system", "prompt"))
+    assert content is None
+    assert meta["used"] is False
+    assert meta["error"] == "missing_api_key"
+    assert meta["provider"] == "requesty"
 
 
 def test_cover_guard_rejects_unsupported_claims():
