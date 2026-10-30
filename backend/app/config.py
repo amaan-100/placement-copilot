@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     db_connect_timeout_seconds: int = 10
 
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
+    # Allow every Vercel deployment (production + PR previews) so the frontend
+    # can call the Render backend from any *.vercel.app origin.
+    cors_origin_regex: str = r"https://.*\.vercel\.app"
     session_cookie_name: str = "pc_session"
     session_header_name: str = "X-Session-Id"
     session_max_age_seconds: int = 60 * 60 * 24 * 30
